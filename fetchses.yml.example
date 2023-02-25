@@ -1,0 +1,58 @@
+logging:
+  # This toggles between logging to console or syslog. We don't log to both.
+  console: [true | false]
+
+  # Syslog settings are used if "console" is false.
+  # Leave both syslog settings blank for local syslog.
+  syslogNetwork: <tcp | udp>
+  syslogRaddr: <remote_host:port>
+
+s3:
+  # AWS CLI profile.  Credentials and region must be configured here.  This
+  # simply reads from ~/.aws/credentials (and config).  The AWS CLI does not
+  # need to be installed.
+  profile: default
+
+  # S3 bucket that SES saves emails to
+  bucket: your-email-bucket
+
+  # Prefix where SES delivers new mail.  Use a prefix here; don't use the root
+  # of the bucket.
+  newMailPrefix: incoming
+
+  # Move emails that fail to decrypt to this prefix in the S3 bucket
+  errorPrefix: undelivered
+
+  # KMS master key ID that SES uses to encrypt emails
+  masterKeyId: xxxxxxxxxx
+
+mail:
+  # Your email domain
+  domain: yourdomain.com
+
+  # Your local smtp server and port
+  smtpServer: localhost:25
+
+  # Save decrypted emails that fail to deliver to this local (secure) path
+  errorPath: /var/mail/undelivered
+
+  # Send email alerts for errors and viruses to this address list
+  alertTo: [you@yourdomain.com]
+
+  # We need a From address to send the email alerts
+  alertFrom: you@yourdomain.com
+
+  # The body of the email to use for alerts when the X-SES-Virus-Verdict header
+  # is FAIL.  Leave blank to disable the alert.  Use case: postfix header_checks
+  # holds the virus email but does not notify me.  This notifies me.  Make sure
+  # blank lines are indented like the other lines.  This is what I use:
+  virusEmail: |-
+    To view the held message with postfix:
+    mailq (see the queue_id in the output)
+    postcat -q <queue_id>
+    
+    To release and deliver the message:
+    postsuper -H <queue_id>
+    
+    To delete the message:
+    postsuper -d <queue_id>

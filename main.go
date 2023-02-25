@@ -258,12 +258,12 @@ func (mailCfg *mailConfig) sendAlert(category string, body string) {
 	var subject string
 	switch category {
 	case "virus":
-		subject = "fetch-ses virus alert"
+		subject = "fetchses virus alert"
 	case "error":
-		subject = "fetch-ses delivery error"
+		subject = "fetchses delivery error"
 	default:
 		// this shouldn't happen
-		subject = "fetch-ses alert"
+		subject = "fetchses alert"
 	}
 
 	msg := []byte("To: " + strings.Join(mailCfg.AlertTo, ",") +
@@ -289,7 +289,7 @@ func fetchSes(s3Cfg *s3Config, mailCfg *mailConfig) int {
 	var exitCode = 0
 	var msg []byte
 	for _, key := range keys {
-		log.Printf("Processing %s/%s", s3Cfg.Bucket, key)
+		log.Printf("Receiving %s/%s", s3Cfg.Bucket, key)
 		s3Cfg.key = key
 		if msg, err = s3Cfg.decryptMail(); err == nil {
 			if err = mailCfg.deliverMail(key, msg); err == nil {
@@ -330,6 +330,7 @@ func main() {
 		log.SetOutput(logger)
 	}
 
+	log.Printf("fetchses launched")
 	if exitCode := fetchSes(s3Cfg, mailCfg); exitCode != 0 {
 		os.Exit(exitCode)
 	}

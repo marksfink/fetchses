@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -62,7 +63,7 @@ type mailHeaders struct {
 
 func parseFlags() (string, error) {
 	var configPath string
-	flag.StringVar(&configPath, "config", "/etc/fetchses.yml", "path to config file")
+	flag.StringVar(&configPath, "config", "/Users/mfink/Projects/go/src/fetchses/fetchses.yml", "path to config file")
 	flag.Parse()
 
 	fi, err := os.Stat(configPath)
@@ -156,11 +157,11 @@ func (s3Cfg *s3Config) decryptMail() ([]byte, error) {
 		err = fmt.Errorf("failed to decrypt S3 object: %v\n"+
 			"moving to %s/%s/%s", err, s3Cfg.Bucket,
 			s3Cfg.ErrorPrefix, filename)
-		err2 := s3Cfg.moveUndeliveredMail(filename)
-		if err2 != nil {
+		if err2 := s3Cfg.moveUndeliveredMail(filename); err2 != nil {
+			// Staying with %w for now versus errors.Join() because
+			// Unwrap does not work with Join presently.
 			err = fmt.Errorf("%w\n%v", err, err2)
 		}
-
 	}
 	return msg, err
 }
@@ -200,8 +201,9 @@ func (mailCfg *mailConfig) deliverMail(key string, msg []byte) error {
 		_, filename, _ := strings.Cut(key, "/")
 		err = fmt.Errorf("failed to deliver message: %v\n"+
 			"writing decrypted data to %s/%s", err, mailCfg.ErrorPath, filename)
-		err2 := writeFile(mailCfg.ErrorPath, filename, msg)
-		if err2 != nil {
+		if err2 := writeFile(mailCfg.ErrorPath, filename, msg); err2 != nil {
+			// Staying with %w for now versus errors.Join() because
+			// Unwrap does not work with Join presently.
 			err = fmt.Errorf("%w\n%v", err, err2)
 		}
 	} else if headers.virus == "FAIL" && mailCfg.VirusEmail != "" {
@@ -289,11 +291,15 @@ func fetchSes(s3Cfg *s3Config, mailCfg *mailConfig) int {
 	var exitCode = 0
 	var msg []byte
 	for _, key := range keys {
-		log.Printf("Receiving %s/%s", s3Cfg.Bucket, key)
+		log.Printf("receiving %s/%s", s3Cfg.Bucket, key)
 		s3Cfg.key = key
 		if msg, err = s3Cfg.decryptMail(); err == nil {
-			if err = mailCfg.deliverMail(key, msg); err == nil {
-				err = s3Cfg.deleteObject()
+			err = mailCfg.deliverMail(key, msg)
+			// A wrapped error means that 1 - SendMail failed and
+			// 2 - we failed to write the decrypted data locally.
+			// Therefore, do not delete the S3 object.
+			if errors.Unwrap(err) == nil {
+				err = errors.Join(err, s3Cfg.deleteObject())
 			}
 		}
 		if err != nil {

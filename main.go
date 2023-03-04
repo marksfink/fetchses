@@ -63,7 +63,7 @@ type mailHeaders struct {
 
 func parseFlags() (string, error) {
 	var configPath string
-	flag.StringVar(&configPath, "config", "/Users/mfink/Projects/go/src/fetchses/fetchses.yml", "path to config file")
+	flag.StringVar(&configPath, "config", "/etc/fetchses.yml", "path to config file")
 	flag.Parse()
 
 	fi, err := os.Stat(configPath)

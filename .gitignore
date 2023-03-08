@@ -1,2 +1,4 @@
 fetchses.yml
 *.eml
+undelivered
+.vscode

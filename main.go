@@ -12,6 +12,7 @@ import (
 	"net/mail"
 	"net/smtp"
 	"os"
+	"regexp"
 	"strings"
 
 	// TODO: https://github.com/aws/aws-sdk-go-v2/issues/1636
@@ -213,30 +214,43 @@ func (mailCfg *mailConfig) deliverMail(key string, msg []byte) error {
 }
 
 func getMailHeaders(msg []byte, domain string) (*mailHeaders, error) {
+	headers := &mailHeaders{}
+	headers.from = ""
+	headers.to = nil
+	headers.virus = ""
+
 	r := bytes.NewReader(msg)
 	m, err := mail.ReadMessage(r)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse message: %v", err)
+		return headers, fmt.Errorf("failed to parse message: %v", err)
 	}
+	headers.virus = m.Header.Get("X-SES-Virus-Verdict")
+	// FROM
+	from, err := mail.ParseAddress(m.Header.Get("From"))
+	if err != nil {
+		return headers, fmt.Errorf("failed to parse From header: %v", err)
+	}
+	headers.from = from.Address
 	// TO
 	toHeader, err := m.Header.AddressList("To")
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse To header: %v", err)
+		// look for the address in the last Received header
+		received := m.Header.Get("Received")
+		re := regexp.MustCompile(`for\ (.*@` + domain + `)`)
+		to := re.FindStringSubmatch(received)
+		if to == nil {
+			return headers, fmt.Errorf("failed to parse To address: %v", err)
+		} else {
+			headers.to = append(headers.to, to[1])
+			return headers, nil
+		}
 	}
 	// Remove addresses outside our domain
-	headers := &mailHeaders{}
 	for _, acct := range toHeader {
 		if strings.Contains(acct.Address, domain) {
 			headers.to = append(headers.to, acct.Address)
 		}
 	}
-	// FROM
-	from, err := mail.ParseAddress(m.Header.Get("From"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse From header: %v", err)
-	}
-	headers.from = from.Address
-	headers.virus = m.Header.Get("X-SES-Virus-Verdict")
 	return headers, nil
 }
 

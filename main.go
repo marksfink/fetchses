@@ -90,8 +90,9 @@ func getConfigs(cfgPath string) (*logConfig, *s3Config, *mailConfig, error) {
 	if err := d.Decode(&cfg); err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to read %s: %v", cfgPath, err)
 	}
-	// yaml delivers LF, sendmail expects CRLF
+	// yaml delivers LF, smtp.SendMail expects CRLF
 	cfg.Mail.VirusEmail = strings.ReplaceAll(cfg.Mail.VirusEmail, "\n", "\r\n")
+	cfg.Mail.Domain = strings.ToLower(cfg.Mail.Domain)
 	return cfg.Log, cfg.S3, cfg.Mail, nil
 }
 
@@ -214,6 +215,8 @@ func (mailCfg *mailConfig) deliverMail(key string, msg []byte) error {
 }
 
 func getMailHeaders(msg []byte, domain string) (*mailHeaders, error) {
+	// explicitly initialize headers here (don't return nil) to avoid a
+	// panic in deliverMail if parsing fails.
 	headers := &mailHeaders{}
 	headers.from = ""
 	headers.to = nil
@@ -224,24 +227,28 @@ func getMailHeaders(msg []byte, domain string) (*mailHeaders, error) {
 	if err != nil {
 		return headers, fmt.Errorf("failed to parse message: %v", err)
 	}
+
 	headers.virus = m.Header.Get("X-SES-Virus-Verdict")
+
 	// FROM
 	from, err := mail.ParseAddress(m.Header.Get("From"))
 	if err != nil {
-		return headers, fmt.Errorf("failed to parse From header: %v", err)
+		return headers, fmt.Errorf("failed to parse the From address: %v", err)
 	}
 	headers.from = from.Address
+
 	// TO
 	toHeader, err := m.Header.AddressList("To")
 	if err != nil {
-		// look for the address in the last Received header
+		// Look for the address in the first Received header starting
+		// at the top, which should be the header added by SES.
 		received := m.Header.Get("Received")
-		re := regexp.MustCompile(`for\ (.*@` + domain + `)`)
+		re := regexp.MustCompile(`(?i)for [<]?(.*@` + domain + `)`)
 		to := re.FindStringSubmatch(received)
 		if to == nil {
-			return headers, fmt.Errorf("failed to parse To address: %v", err)
+			return headers, fmt.Errorf("failed to parse the recipients: %v", err)
 		} else {
-			headers.to = append(headers.to, to[1])
+			headers.to = append(headers.to, strings.ToLower(to[1]))
 			return headers, nil
 		}
 	}

@@ -247,8 +247,9 @@ func getMailHeaders(msg []byte, domain string) (*mailHeaders, error) {
 	}
 	// Remove addresses outside our domain
 	for _, acct := range toHeader {
-		if strings.Contains(acct.Address, domain) {
-			headers.to = append(headers.to, acct.Address)
+		address := strings.ToLower(acct.Address)
+		if strings.Contains(address, domain) {
+			headers.to = append(headers.to, address)
 		}
 	}
 	return headers, nil

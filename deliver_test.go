@@ -10,7 +10,7 @@ import (
 
 func TestEmail(t *testing.T) {
 	log.SetFlags(0)
-	file, err := os.Open("./undelivered/9g3loeekgu85c2qeq38utuu7tg6rf0d8b3c4kt01")
+	file, err := os.Open("./undelivered/1kurldhft99h910mtkbh8avrfed20tag3j054r01")
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -23,7 +23,7 @@ func TestEmail(t *testing.T) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	err = cfg.deliverMail("incoming/9g3loeekgu85c2qeq38utuu7tg6rf0d8b3c4kt01", msg)
+	err = cfg.deliverMail("incoming/1kurldhft99h910mtkbh8avrfed20tag3j054r01", msg)
 	if err != nil {
 		t.Fatal(err)
 	}

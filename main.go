@@ -8,6 +8,7 @@ import (
 	"log"
 	"log/syslog"
 	"os"
+	"os/user"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -25,19 +26,36 @@ type config struct {
 	Mail *mailConfig `yaml:"mail"`
 }
 
-func parseFlags() (string, error) {
-	var configPath string
-	flag.StringVar(&configPath, "config", "/etc/fetchses.yml", "path to config file")
+type flags struct {
+	configPath string
+	bucket     string
+	key        string
+}
+
+func parseFlags() (*flags, error) {
+	args := &flags{}
+	flag.StringVar(&args.configPath, "config", "", "Path to the config file (default ~/.config/fetchses.yml)")
+	flag.StringVar(&args.bucket, "bucket", "", "S3 bucket containing incoming email "+
+		"(this overrides the config file)")
+	flag.StringVar(&args.key, "key", "", "Specific email file to fetch "+
+		"(if not set, we read all files in the configured bucket and prefix)")
 	flag.Parse()
 
-	fi, err := os.Stat(configPath)
+	if args.configPath == "" {
+		user, err := user.Current()
+		if err != nil {
+			return nil, fmt.Errorf("could not determine the current user to find the config file")
+		}
+		args.configPath = user.HomeDir + "/.config/fetchses.yml"
+	}
+	fi, err := os.Stat(args.configPath)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if !fi.Mode().IsRegular() {
-		return "", fmt.Errorf("'%s' is not a normal file", configPath)
+		return nil, fmt.Errorf("'%s' is not a normal file", args.configPath)
 	}
-	return configPath, nil
+	return args, nil
 }
 
 func getConfigs(cfgPath string) (*logConfig, *s3Config, *mailConfig, error) {
@@ -76,14 +94,17 @@ func fetchSes(s3Cfg *s3Config, mailCfg *mailConfig) int {
 	var keys []string
 	err := s3Cfg.connectS3()
 	if err == nil {
-		keys, err = s3Cfg.listNewMail()
+		if s3Cfg.key == "" {
+			keys, err = s3Cfg.listNewMail()
+		} else {
+			keys = []string{s3Cfg.key}
+		}
 	}
 	if err != nil {
 		log.Println(err)
 		mailCfg.sendAlert("error", err.Error())
 		return 2
 	}
-
 	var exitCode = 0
 	var msg []byte
 	for _, key := range keys {
@@ -113,11 +134,11 @@ func fetchSes(s3Cfg *s3Config, mailCfg *mailConfig) int {
 
 func main() {
 	log.SetFlags(0)
-	cfgPath, err := parseFlags()
+	args, err := parseFlags()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	logCfg, s3Cfg, mailCfg, err := getConfigs(cfgPath)
+	logCfg, s3Cfg, mailCfg, err := getConfigs(args.configPath)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -133,6 +154,15 @@ func main() {
 	}
 
 	log.Printf("fetchses launched")
+	if args.bucket != "" {
+		s3Cfg.Bucket = args.bucket
+	}
+	if args.key != "" {
+		s3Cfg.key = args.key
+	} else {
+		log.Printf("reading all new mail in the bucket")
+	}
+
 	if exitCode := fetchSes(s3Cfg, mailCfg); exitCode != 0 {
 		os.Exit(exitCode)
 	}

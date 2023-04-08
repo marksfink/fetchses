@@ -2,3 +2,5 @@ fetchses.yml
 *.eml
 undelivered
 .vscode
+
+dist/

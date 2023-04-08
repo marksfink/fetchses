@@ -32,6 +32,12 @@ type flags struct {
 	key        string
 }
 
+var (
+	version = "dev"
+	date    = "unknown"
+	commit  = "none"
+)
+
 func parseFlags() (*flags, error) {
 	args := &flags{}
 	flag.StringVar(&args.configPath, "config", "", "Path to the config file (default ~/.config/fetchses.yml)")
@@ -134,6 +140,11 @@ func fetchSes(s3Cfg *s3Config, mailCfg *mailConfig) int {
 
 func main() {
 	log.SetFlags(0)
+
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "%s %s %s %s:\n", os.Args[0], version, date, commit)
+		flag.PrintDefaults()
+	}
 	args, err := parseFlags()
 	if err != nil {
 		log.Fatalln(err)
@@ -146,14 +157,14 @@ func main() {
 	var logger *syslog.Writer
 	if !logCfg.Console {
 		logger, err = syslog.Dial(logCfg.SyslogNetwork, logCfg.SyslogRaddr,
-			syslog.LOG_INFO, "fetchses")
+			syslog.LOG_INFO, os.Args[0])
 		if err != nil {
 			log.Fatalln(err)
 		}
 		log.SetOutput(logger)
 	}
 
-	log.Printf("fetchses launched")
+	log.Printf("%s launched", os.Args[0])
 	if args.bucket != "" {
 		s3Cfg.Bucket = args.bucket
 	}
@@ -162,6 +173,7 @@ func main() {
 	} else {
 		log.Printf("reading all new mail in the bucket")
 	}
+	// TODO: validate config values
 
 	if exitCode := fetchSes(s3Cfg, mailCfg); exitCode != 0 {
 		os.Exit(exitCode)

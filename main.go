@@ -9,6 +9,7 @@ import (
 	"log/syslog"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -154,17 +155,18 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	bin := filepath.Base(os.Args[0])
 	var logger *syslog.Writer
 	if !logCfg.Console {
 		logger, err = syslog.Dial(logCfg.SyslogNetwork, logCfg.SyslogRaddr,
-			syslog.LOG_INFO, os.Args[0])
+			syslog.LOG_INFO, bin)
 		if err != nil {
 			log.Fatalln(err)
 		}
 		log.SetOutput(logger)
 	}
 
-	log.Printf("%s launched", os.Args[0])
+	log.Printf("%s launched", bin)
 	if args.bucket != "" {
 		s3Cfg.Bucket = args.bucket
 	}

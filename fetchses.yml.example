@@ -23,8 +23,10 @@ s3:
   # Move emails that fail to decrypt to this prefix in the S3 bucket
   errorPrefix: undelivered
 
-  # KMS master key ID that SES uses to encrypt emails
-  masterKeyId: xxxxxxxxxx
+  # KMS key ID that SES uses to encrypt emails
+  # This can be just the ID if it is in the same account and region as your AWS profile.
+  # Otherwise, specify the complete ARN.
+  kmsKeyId: xxxxxxxxxx
 
 mail:
   # Your email domain

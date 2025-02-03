@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,7 +24,7 @@ type logConfig struct {
 
 type config struct {
 	Log  *logConfig  `yaml:"logging"`
-	S3   *s3Config   `yaml:"s3"`
+	S3   *s3Session  `yaml:"s3"`
 	Mail *mailConfig `yaml:"mail"`
 }
 
@@ -65,7 +66,7 @@ func parseFlags() (*flags, error) {
 	return args, nil
 }
 
-func getConfigs(cfgPath string) (*logConfig, *s3Config, *mailConfig, error) {
+func getConfigs(cfgPath string) (*logConfig, *s3Session, *mailConfig, error) {
 	cfg := &config{}
 
 	file, err := os.Open(cfgPath)
@@ -97,14 +98,14 @@ func writeFile(path string, file string, msg []byte) error {
 	return err
 }
 
-func fetchSes(s3Cfg *s3Config, mailCfg *mailConfig) int {
+func fetchSes(sess *s3Session, mailCfg *mailConfig) int {
 	var keys []string
-	err := s3Cfg.connectS3()
+	err := sess.connectS3()
 	if err == nil {
-		if s3Cfg.key == "" {
-			keys, err = s3Cfg.listNewMail()
+		if sess.key == "" {
+			keys, err = sess.listNewMail()
 		} else {
-			keys = []string{s3Cfg.key}
+			keys = []string{sess.key}
 		}
 	}
 	if err != nil {
@@ -115,15 +116,15 @@ func fetchSes(s3Cfg *s3Config, mailCfg *mailConfig) int {
 	var exitCode = 0
 	var msg []byte
 	for _, key := range keys {
-		log.Printf("receiving %s/%s", s3Cfg.Bucket, key)
-		s3Cfg.key = key
-		if msg, err = s3Cfg.decryptMail(); err == nil {
+		log.Printf("receiving %s/%s", sess.Bucket, key)
+		sess.key = key
+		if msg, err = sess.decryptMail(); err == nil {
 			err = mailCfg.deliverMail(key, msg)
 			// A wrapped error means that 1 - SendMail failed and
 			// 2 - we failed to write the decrypted data locally.
 			// Therefore, do not delete the S3 object.
 			if errors.Unwrap(err) == nil {
-				err = errors.Join(err, s3Cfg.deleteObject())
+				err = errors.Join(err, sess.deleteObject())
 			}
 		}
 		if err != nil {
@@ -167,6 +168,9 @@ func main() {
 	}
 
 	log.Printf("%s launched", bin)
+
+	s3Cfg.ctx = context.Background()
+
 	if args.bucket != "" {
 		s3Cfg.Bucket = args.bucket
 	}

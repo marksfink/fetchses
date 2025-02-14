@@ -94,6 +94,9 @@ func logError(err error) {
 }
 
 func alert(script string, alerterr error) error {
+	if script == "" {
+		return nil
+	}
 	cmd := exec.Command(script)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -106,7 +109,7 @@ func alert(script string, alerterr error) error {
 	}()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("the alert script failed:\n%s\n%v", output, err)
+		log.Printf("the alert script failed:\n%s", output)
 	}
 	return err
 }
@@ -123,9 +126,7 @@ func fetchSes(sess *s3Session, mailCfg *mailConfig) error {
 	}
 	if err != nil {
 		logError(err)
-		if mailCfg.AlertScript != "" {
-			err = errors.Join(err, alert(mailCfg.AlertScript, err))
-		}
+		err = errors.Join(err, alert(mailCfg.AlertScript, err))
 		return err
 	}
 
@@ -146,9 +147,7 @@ func fetchSes(sess *s3Session, mailCfg *mailConfig) error {
 		}
 		if err != nil {
 			logError(err)
-			if mailCfg.AlertScript != "" {
-				err = errors.Join(err, alert(mailCfg.AlertScript, err))
-			}
+			err = errors.Join(err, alert(mailCfg.AlertScript, err))
 			loopErr = err
 		}
 	}
@@ -177,12 +176,11 @@ func main() {
 		logger, err = syslog.Dial(logCfg.SyslogNetwork, logCfg.SyslogRaddr,
 			syslog.LOG_INFO, bin)
 		if err != nil {
+			alert(mailCfg.AlertScript, err)
 			log.Fatalln(err)
 		}
 		log.SetOutput(logger)
 	}
-
-	log.Printf("%s launched", bin)
 
 	s3Cfg.ctx = context.Background()
 
@@ -194,7 +192,6 @@ func main() {
 	} else {
 		log.Printf("reading all new mail in the bucket")
 	}
-	// TODO: validate config values
 
 	err = fetchSes(s3Cfg, mailCfg)
 	if err != nil {

@@ -33,7 +33,7 @@ func (sess *s3Session) connectS3() error {
 		return fmt.Errorf("failed to load AWS config, %v", err)
 	}
 	sess.client = s3.NewFromConfig(cfg)
-	// EnableLegacyWrappingAlgorithms is required with objects that SES writes.
+	// EnableLegacyWrappingAlgorithms is required with S3 objects that SES writes.
 	cmm, err := materials.NewCryptographicMaterialsManager(
 		materials.NewKmsKeyring(kms.NewFromConfig(cfg), sess.KmsKeyId,
 			func(options *materials.KeyringOptions) {
@@ -72,9 +72,9 @@ func (sess *s3Session) decryptMail() ([]byte, error) {
 	var msg []byte
 
 	// In 1/2025, AWS started validating checksums by default when getting
-	// objects. SES does not include checksums when it writes to S3, so we get
-	// a warning about it when getting the object. The option below disables
-	// the check so we don't get the warning.
+	// S3 objects. SES does not include checksums when it writes to S3, so we
+	// get a warning about it when getting the object. The option below
+	// disables the check so we don't get the warning.
 	result, err := sess.decrypt.GetObject(sess.ctx,
 		&s3.GetObjectInput{
 			Bucket: aws.String(sess.Bucket),
@@ -90,11 +90,8 @@ func (sess *s3Session) decryptMail() ([]byte, error) {
 	if err != nil {
 		_, filename, _ := strings.Cut(sess.key, "/")
 		err = fmt.Errorf("failed to decrypt S3 object: %v\n"+
-			"moving to %s/%s/%s", err, sess.Bucket,
-			sess.ErrorPrefix, filename)
+			"moving to %s/%s/%s", err, sess.Bucket, sess.ErrorPrefix, filename)
 		if err2 := sess.moveUndeliveredMail(filename); err2 != nil {
-			// Staying with %w for now versus errors.Join() because
-			// Unwrap does not work with Join presently.
 			err = fmt.Errorf("%w\n%v", err, err2)
 		}
 	}

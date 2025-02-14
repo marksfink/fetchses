@@ -6,9 +6,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/syslog"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -79,26 +81,37 @@ func getConfigs(cfgPath string) (*logConfig, *s3Session, *mailConfig, error) {
 	if err := d.Decode(&cfg); err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to read %s: %v", cfgPath, err)
 	}
-	// yaml delivers LF, smtp.SendMail expects CRLF
-	cfg.Mail.VirusEmail = strings.ReplaceAll(cfg.Mail.VirusEmail, "\n", "\r\n")
 	cfg.Mail.Domain = strings.ToLower(cfg.Mail.Domain)
 	return cfg.Log, cfg.S3, cfg.Mail, nil
 }
 
-func writeFile(path string, file string, msg []byte) error {
-	err := os.MkdirAll(path, 0750)
-	if err == nil {
-		var f *os.File
-		f, err = os.OpenFile(path+"/"+file, os.O_CREATE|os.O_WRONLY, 0640)
-		if err == nil {
-			defer f.Close()
-			_, err = fmt.Fprintf(f, "%s\n", msg)
-		}
+func logError(err error) {
+	// This logs each line separately for syslog
+	scanner := bufio.NewScanner(strings.NewReader(err.Error()))
+	for scanner.Scan() {
+		log.Println(scanner.Text())
+	}
+}
+
+func alert(script string, alerterr error) error {
+	cmd := exec.Command(script)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		log.Printf("the alert script failed:\n%v", err)
+		return err
+	}
+	go func() {
+		defer stdin.Close()
+		io.WriteString(stdin, alerterr.Error())
+	}()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("the alert script failed:\n%s\n%v", output, err)
 	}
 	return err
 }
 
-func fetchSes(sess *s3Session, mailCfg *mailConfig) int {
+func fetchSes(sess *s3Session, mailCfg *mailConfig) error {
 	var keys []string
 	err := sess.connectS3()
 	if err == nil {
@@ -109,35 +122,37 @@ func fetchSes(sess *s3Session, mailCfg *mailConfig) int {
 		}
 	}
 	if err != nil {
-		log.Println(err)
-		mailCfg.sendAlert("error", err.Error())
-		return 2
+		logError(err)
+		if mailCfg.AlertScript != "" {
+			err = errors.Join(err, alert(mailCfg.AlertScript, err))
+		}
+		return err
 	}
-	var exitCode = 0
+
 	var msg []byte
+	var loopErr error
 	for _, key := range keys {
 		log.Printf("receiving %s/%s", sess.Bucket, key)
 		sess.key = key
-		if msg, err = sess.decryptMail(); err == nil {
+		msg, err = sess.decryptMail()
+		if err == nil {
 			err = mailCfg.deliverMail(key, msg)
-			// A wrapped error means that 1 - SendMail failed and
-			// 2 - we failed to write the decrypted data locally.
-			// Therefore, do not delete the S3 object.
-			if errors.Unwrap(err) == nil {
-				err = errors.Join(err, sess.deleteObject())
-			}
+		}
+		// A wrapped error here means that 1 - SendMail failed and
+		// 2 - we failed to write the decrypted data locally.
+		// In that case, do not delete the S3 object.
+		if errors.Unwrap(err) == nil {
+			err = errors.Join(err, sess.deleteObject())
 		}
 		if err != nil {
-			// This logs each line separately for syslog
-			scanner := bufio.NewScanner(strings.NewReader(err.Error()))
-			for scanner.Scan() {
-				log.Println(scanner.Text())
+			logError(err)
+			if mailCfg.AlertScript != "" {
+				err = errors.Join(err, alert(mailCfg.AlertScript, err))
 			}
-			mailCfg.sendAlert("error", err.Error())
-			exitCode = 3
+			loopErr = err
 		}
 	}
-	return exitCode
+	return loopErr
 }
 
 func main() {
@@ -181,7 +196,8 @@ func main() {
 	}
 	// TODO: validate config values
 
-	if exitCode := fetchSes(s3Cfg, mailCfg); exitCode != 0 {
-		os.Exit(exitCode)
+	err = fetchSes(s3Cfg, mailCfg)
+	if err != nil {
+		os.Exit(1)
 	}
 }

@@ -3,20 +3,18 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"net/mail"
 	"net/smtp"
+	"os"
 	"regexp"
 	"strings"
 )
 
 type mailConfig struct {
-	Domain     string   `yaml:"domain"`
-	SmtpServer string   `yaml:"smtpServer"`
-	ErrorPath  string   `yaml:"errorPath"`
-	AlertTo    []string `yaml:"alertTo"`
-	AlertFrom  string   `yaml:"alertFrom"`
-	VirusEmail string   `yaml:"virusEmail"`
+	Domain      string `yaml:"domain"`
+	SmtpServer  string `yaml:"smtpServer"`
+	ErrorPath   string `yaml:"errorPath"`
+	AlertScript string `yaml:"alertScript"`
 }
 
 type mailHeaders struct {
@@ -31,19 +29,12 @@ func (mailCfg *mailConfig) deliverMail(key string, msg []byte) error {
 		err = smtp.SendMail(mailCfg.SmtpServer, nil, headers.from, headers.to, msg)
 	}
 	if err != nil {
-		if headers.virus == "FAIL" {
-			err = fmt.Errorf("%v\nTHIS EMAIL FAILED SES VIRUS SCAN", err)
-		}
 		_, filename, _ := strings.Cut(key, "/")
 		err = fmt.Errorf("failed to deliver message: %v\n"+
 			"writing decrypted data to %s/%s", err, mailCfg.ErrorPath, filename)
 		if err2 := writeFile(mailCfg.ErrorPath, filename, msg); err2 != nil {
-			// Staying with %w for now versus errors.Join() because
-			// Unwrap does not work with Join presently.
 			err = fmt.Errorf("%w\n%v", err, err2)
 		}
-	} else if headers.virus == "FAIL" && mailCfg.VirusEmail != "" {
-		mailCfg.sendAlert("virus", mailCfg.VirusEmail)
 	}
 	return err
 }
@@ -63,6 +54,10 @@ func getMailHeaders(msg []byte, domain string) (*mailHeaders, error) {
 	}
 
 	headers.virus = m.Header.Get("X-SES-Virus-Verdict")
+	if headers.virus == "FAIL" {
+		err = fmt.Errorf("email failed virus scan")
+		return headers, err
+	}
 
 	// FROM
 	from, err := mail.ParseAddress(m.Header.Get("From"))
@@ -97,25 +92,15 @@ func getMailHeaders(msg []byte, domain string) (*mailHeaders, error) {
 	return headers, nil
 }
 
-func (mailCfg *mailConfig) sendAlert(category string, body string) {
-	if mailCfg.AlertTo == nil || mailCfg.AlertFrom == "" {
-		return
+func writeFile(path string, file string, msg []byte) error {
+	err := os.MkdirAll(path, 0750)
+	if err == nil {
+		var f *os.File
+		f, err = os.OpenFile(path+"/"+file, os.O_CREATE|os.O_WRONLY, 0640)
+		if err == nil {
+			defer f.Close()
+			_, err = fmt.Fprintf(f, "%s\n", msg)
+		}
 	}
-	var subject string
-	switch category {
-	case "virus":
-		subject = "fetchses virus alert"
-	case "error":
-		subject = "fetchses delivery error"
-	default:
-		// this shouldn't happen
-		subject = "fetchses alert"
-	}
-
-	msg := []byte("To: " + strings.Join(mailCfg.AlertTo, ",") +
-		"\r\nSubject: " + subject + "\r\n\r\n" + body)
-	err := smtp.SendMail(mailCfg.SmtpServer, nil, mailCfg.AlertFrom, mailCfg.AlertTo, msg)
-	if err != nil {
-		log.Printf("failed to send alert: %v", err)
-	}
+	return err
 }

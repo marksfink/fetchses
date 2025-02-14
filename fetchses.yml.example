@@ -38,23 +38,7 @@ mail:
   # Save decrypted emails that fail to deliver to this local (secure) path
   errorPath: /var/mail/undelivered
 
-  # Send email alerts for errors and viruses to this address list
-  alertTo: [you@yourdomain.com]
-
-  # We need a From address to send the email alerts
-  alertFrom: you@yourdomain.com
-
-  # The body of the email to use for alerts when the X-SES-Virus-Verdict header
-  # is FAIL.  Leave blank to disable the alert.  Use case: postfix header_checks
-  # holds the virus email but does not notify me.  This notifies me.  Make sure
-  # blank lines are indented like the other lines.  This is what I use:
-  virusEmail: |-
-    To view the held message with postfix:
-    mailq (see the queue_id in the output)
-    postcat -q <queue_id>
-    
-    To release and deliver the message:
-    postsuper -H <queue_id>
-    
-    To delete the message:
-    postsuper -d <queue_id>
+  # Run this script if there is an error, like an email fails to decrypt or be
+  # delivered or fails the virus scan.  The error text is sent to the script
+  # via stdin.
+  alertScript: <path>

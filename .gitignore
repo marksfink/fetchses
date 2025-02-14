@@ -2,5 +2,5 @@ fetchses.yml
 *.eml
 undelivered
 .vscode
-test.sh
+alert.sh
 dist/

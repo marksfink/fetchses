@@ -27,6 +27,7 @@ type s3Session struct {
 }
 
 func (sess *s3Session) connectS3() error {
+	sess.ctx = context.Background()
 	cfg, err := awsconfig.LoadDefaultConfig(sess.ctx,
 		awsconfig.WithSharedConfigProfile(sess.Profile))
 	if err != nil {

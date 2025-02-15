@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -178,13 +177,11 @@ func main() {
 		logger, err = syslog.Dial(logCfg.SyslogNetwork, logCfg.SyslogRaddr,
 			syslog.LOG_INFO, filepath.Base(os.Args[0]))
 		if err != nil {
-			alert(mailCfg.AlertScript, err)
+			err = errors.Join(err, alert(mailCfg.AlertScript, err))
 			log.Fatalln(err)
 		}
 		log.SetOutput(logger)
 	}
-
-	s3Cfg.ctx = context.Background()
 
 	if args.bucket != "" {
 		s3Cfg.Bucket = args.bucket

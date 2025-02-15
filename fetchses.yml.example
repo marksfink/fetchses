@@ -38,7 +38,9 @@ mail:
   # Save decrypted emails that fail to deliver to this local (secure) path
   errorPath: /var/mail/undelivered
 
-  # Run this script if there is an error, like an email fails to decrypt or be
-  # delivered or fails the virus scan.  The error text is sent to the script
-  # via stdin.
+  # Run this script (or any binary) if there is an error, like an email fails
+  # to decrypt or be delivered or has a virus.  If this is left blank then the
+  # error will just be logged.  "fetchses" is sent as an argument to the
+  # script (to use the same script for different programs).  The error message
+  # is piped to the script via stdin.
   alertScript: <path>

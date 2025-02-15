@@ -44,17 +44,19 @@ var (
 
 func parseFlags() (*flags, error) {
 	args := &flags{}
-	flag.StringVar(&args.configPath, "config", "", "Path to the config file (default ~/.config/fetchses.yml)")
-	flag.StringVar(&args.bucket, "bucket", "", "S3 bucket containing incoming email "+
-		"(this overrides the config file)")
-	flag.StringVar(&args.key, "key", "", "Specific email file to fetch "+
-		"(if not set, we read all files in the configured bucket and prefix)")
+	flag.StringVar(&args.configPath, "config", "",
+		"Path to the config file (default ~/.config/fetchses.yml)")
+	flag.StringVar(&args.bucket, "bucket", "",
+		"S3 bucket containing incoming email (overrides the config file)")
+	flag.StringVar(&args.key, "key", "",
+		"Specific email file to fetch (fetch all email if not set)")
 	flag.Parse()
 
 	if args.configPath == "" {
 		user, err := user.Current()
 		if err != nil {
-			return nil, fmt.Errorf("could not determine the current user to find the config file")
+			return nil, fmt.Errorf("could not determine the current user to " +
+				"find the config file")
 		}
 		args.configPath = user.HomeDir + "/.config/fetchses.yml"
 	}
@@ -97,7 +99,7 @@ func alert(script string, alerterr error) error {
 	if script == "" {
 		return nil
 	}
-	cmd := exec.Command(script)
+	cmd := exec.Command(script, filepath.Base(os.Args[0]))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		log.Printf("the alert script failed:\n%v", err)
@@ -158,7 +160,8 @@ func main() {
 	log.SetFlags(0)
 
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "%s %s %s %s:\n", os.Args[0], version, date, commit)
+		fmt.Fprintf(flag.CommandLine.Output(), "%s %s %s %s:\n",
+			os.Args[0], version, date, commit)
 		flag.PrintDefaults()
 	}
 	args, err := parseFlags()
@@ -170,11 +173,10 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	bin := filepath.Base(os.Args[0])
 	var logger *syslog.Writer
 	if !logCfg.Console {
 		logger, err = syslog.Dial(logCfg.SyslogNetwork, logCfg.SyslogRaddr,
-			syslog.LOG_INFO, bin)
+			syslog.LOG_INFO, filepath.Base(os.Args[0]))
 		if err != nil {
 			alert(mailCfg.AlertScript, err)
 			log.Fatalln(err)
